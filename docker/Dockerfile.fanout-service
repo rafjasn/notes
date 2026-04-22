@@ -1,0 +1,46 @@
+FROM node:24-alpine AS base
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/fanout-client/package.json packages/fanout-client/package.json
+COPY services/api/package.json services/api/package.json
+COPY services/fanout-service/package.json services/fanout-service/package.json
+COPY frontend/package.json frontend/package.json
+RUN npm ci
+
+FROM deps AS build
+COPY tsconfig.json tsconfig.json
+COPY packages/shared packages/shared
+RUN npm run build -w @notes/shared
+
+COPY services/fanout-service services/fanout-service
+RUN npm run build -w @notes/fanout-service
+
+FROM deps AS development
+COPY tsconfig.json tsconfig.json
+COPY packages/shared packages/shared
+RUN npm run build -w @notes/shared
+COPY services/fanout-service/nest-cli.json services/fanout-service/nest-cli.json
+COPY services/fanout-service/tsconfig.json services/fanout-service/tsconfig.json
+COPY services/fanout-service/tsconfig.build.json services/fanout-service/tsconfig.build.json
+WORKDIR /app
+EXPOSE 3000
+CMD ["npm", "run", "start:dev", "-w", "@notes/fanout-service"]
+
+FROM base AS production
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=build /app/services/fanout-service/dist ./services/fanout-service/dist
+COPY --from=build /app/services/fanout-service/package.json ./services/fanout-service/package.json
+COPY --from=build /app/package.json ./package.json
+
+WORKDIR /app/services/fanout-service
+EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:3000/health || exit 1
+
+CMD ["node", "dist/main"]

@@ -1,0 +1,16 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "composite": false,
+        "incremental": false,
+        "paths": {
+            "@common/*": ["./src/common/*"],
+            "@config/*": ["./src/config/*"],
+            "@database/*": ["./src/database/*"],
+            "@modules/*": ["./src/modules/*"],
+            "@notes/shared": ["../../packages/shared/dist"],
+            "@notes/fanout-client": ["../../packages/fanout-client/dist"]
+        }
+    },
+    "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}

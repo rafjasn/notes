@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-shared:
+    name: Build @notes/shared
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace=@notes/shared
+      - uses: actions/upload-artifact@v7
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+          retention-days: 1
+
+  build-fanout-client:
+    name: Build @notes/fanout-client
+    runs-on: ubuntu-latest
+    needs: build-shared
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+      - run: npm run build --workspace=@notes/fanout-client
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fanout-client-dist
+          path: packages/fanout-client/dist
+          retention-days: 1
+
+  cdk-synth:
+    name: CDK synth
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/cdk
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: infrastructure/cdk/package-lock.json
+      - run: npm ci
+      - run: npx cdk synth --quiet
+        env:
+          CDK_DEFAULT_REGION: us-east-1
+          CORS_ORIGIN: http://localhost:3000
+          MAIL_FROM: no-reply@example.com
+          COGNITO_DOMAIN_PREFIX: notes-ci-local
+
+  lint:
+    name: Lint ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    needs: build-shared
+    strategy:
+      matrix:
+        include:
+          - workspace: "@notes/api"
+            directory: services/api
+          - workspace: "@notes/fanout-service"
+            directory: services/fanout-service
+          - workspace: "@notes/frontend"
+            directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+      - name: Lint
+        run: npm run lint --workspace=${{ matrix.workspace }} --if-present
+
+  build:
+    name: Build ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    needs: [build-shared, build-fanout-client]
+    strategy:
+      matrix:
+        workspace: ["@notes/api", "@notes/fanout-service"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: fanout-client-dist
+          path: packages/fanout-client/dist
+      - run: npm run build --workspace=${{ matrix.workspace }}
+
+  e2e:
+    name: API e2e
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      mongo:
+        image: mongo:8.2
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Run API e2e tests
+        run: npm run test:e2e -w @notes/api
+        env:
+          NODE_ENV: test
+          CI: "true"
+          MONGO_URI: mongodb://127.0.0.1:27017/notes-ci?serverSelectionTimeoutMS=5000
+          JWT_SECRET: notes-ci-test-secret
+
+  docker-build:
+    name: Docker build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [build, lint, e2e]
+    strategy:
+      matrix:
+        include:
+          - service: api
+            dockerfile: docker/Dockerfile.api
+            target: production
+          - service: fanout-service
+            dockerfile: docker/Dockerfile.fanout-service
+            target: production
+          - service: frontend
+            dockerfile: docker/Dockerfile.frontend
+            target: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

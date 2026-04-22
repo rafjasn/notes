@@ -1,0 +1,18 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "rootDir": "src",
+        "composite": true,
+        "paths": {
+            "@common/*": ["./src/common/*"],
+            "@config/*": ["./src/config/*"],
+            "@database/*": ["./src/database/*"],
+            "@modules/*": ["./src/modules/*"],
+            "@notes/shared": ["../../packages/shared/src"],
+            "@notes/fanout-client": ["../../packages/fanout-client/src"]
+        }
+    },
+    "include": ["src/**/*"],
+    "references": [{ "path": "../../packages/shared" }, { "path": "../../packages/fanout-client" }]
+}
