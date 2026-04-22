@@ -5,10 +5,10 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 
 ## Features
 
-- Multi-tenant workspaces with workspace subdomains, for workspace routing
+- Multi-tenant workspaces with workspace subdomains for tenant routing
 - Dynamic roles defined by admins with arbitrary permission strings
 - User invitations with roles assigned up front, accepted via token link
-- Workspace-scoped encrypted notes, titles and content encrypted in the browser via KMS envelope encryption (AES-GCM), the API stores ciphertext only
+- Workspace-scoped encrypted notes: titles and content are encrypted in the browser with AES-GCM, while KMS data-key operations run through authenticated BFF routes
 - Next.js frontend with HttpOnly-cookie BFF auth
 - Pluggable auth provider: Keycloak locally, AWS Cognito in production
 - Reusable fanout service: API publishes events to SNS → SQS → fanout → Socket.IO subscribers
@@ -22,7 +22,7 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 - **Storage** — MongoDB
 - **Messaging** — SNS, SQS
 - **Auth** — Keycloak, AWS Cognito
-- **Infrastructure** — AWS CDK v2, ECS Fargate, ALB, ECR, CloudWatch, Secrets Manager
+- **Infrastructure** — AWS CDK v2, ECS Fargate, ALB, ECR, KMS, Cognito, SES, CloudWatch, Secrets Manager
 - **Local dev** — LocalStack, Docker Compose, Mailhog
 
 ## Local setup
@@ -30,7 +30,7 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 ### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 4 with Compose v2
-- Node.js ≥ 20 and npm ≥ 10 (only needed if running outside Docker)
+- Node.js 24 and npm ≥ 10 (only needed if running outside Docker)
 
 ### 1. Clone and configure
 
@@ -38,10 +38,9 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 git clone <repo-url>
 cd notes
 cp .env.example .env
-cp frontend/.env.example frontend/.env
 ```
 
-Edit `frontend/.env` and set `JWT_SECRET` to match the value in `.env`.
+If you run the frontend outside Docker, also copy `frontend/.env.example` to `frontend/.env.local` and set `JWT_SECRET` to match the value in `.env`.
 
 ### 2. Start all services
 
@@ -68,9 +67,10 @@ Go to http://localhost, register an account, and create a workspace. Invite othe
 
 ## Testing
 
-End-to-end tests require LocalStack to be running (`docker compose up localstack -d`):
+End-to-end tests require MongoDB to be running:
 
 ```bash
+docker compose up -d mongo
 npm run test:e2e -w @notes/api
 ```
 
@@ -170,8 +170,8 @@ The `removalPolicy=destroy` context flag must be set to allow ECR, KMS, and Cogn
 
 Two GitHub Actions workflows are included:
 
-- **`ci.yml`** — runs on every push and PR: CDK synth, TypeScript build, lint, Docker build check
-- **`deploy.yml`** — builds and pushes Docker images to ECR, then deploys the CDK stack via OIDC (no long-lived AWS credentials stored in GitHub)
+- **`ci.yml`** — runs on every push and PR: CDK synth, TypeScript build, lint, Mongo-backed API e2e tests, Docker build check
+- **`deploy.yml`** — deploys infrastructure, builds and pushes Docker images to ECR, then deploys the ECS services via OIDC (no long-lived AWS credentials stored in GitHub)
 
 Required GitHub secrets and variables:
 
