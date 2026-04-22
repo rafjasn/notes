@@ -38,7 +38,7 @@ services:
         ports:
             - '4566:4566'
         environment:
-            SERVICES: sns,sqs,dynamodb,kms
+            SERVICES: sns,sqs,kms
             DEFAULT_REGION: us-east-1
             DEBUG: 0
         volumes:
@@ -80,7 +80,6 @@ services:
             AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
             SNS_TOPIC_ARN: ${SNS_TOPIC_ARN:-arn:aws:sns:us-east-1:000000000000:notes-events}
             SQS_QUEUE_URL: ${SQS_QUEUE_URL:-http://localstack:4566/000000000000/notes-events-queue}
-            DYNAMODB_TABLE: ${DYNAMODB_TABLE:-notes-connections}
             SMTP_HOST: mailhog
             SMTP_PORT: ${SMTP_PORT:-1025}
             MAIL_FROM: ${MAIL_FROM:-no-reply@notes.local}

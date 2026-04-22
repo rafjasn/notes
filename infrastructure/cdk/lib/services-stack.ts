@@ -68,7 +68,6 @@ export class NotesServicesStack extends cdk.Stack {
                         AWS_REGION: this.region,
                         SNS_TOPIC_ARN: infra.eventsTopic.topicArn,
                         SQS_QUEUE_URL: infra.eventsQueue.queueUrl,
-                        DYNAMODB_TABLE: infra.connectionsTable.tableName,
                         MAIL_TRANSPORT: 'ses',
                         MAIL_FROM: mailFrom
                     },
@@ -87,7 +86,6 @@ export class NotesServicesStack extends cdk.Stack {
 
         infra.eventsTopic.grantPublish(apiService.taskDefinition.taskRole);
         infra.eventsQueue.grantConsumeMessages(apiService.taskDefinition.taskRole);
-        infra.connectionsTable.grantReadWriteData(apiService.taskDefinition.taskRole);
         apiService.taskDefinition.taskRole.addToPrincipalPolicy(
             new iam.PolicyStatement({
                 actions: ['ses:SendEmail', 'ses:SendRawEmail'],

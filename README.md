@@ -5,21 +5,21 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 
 ## Features
 
-- Multi-tenant workspaces with workspace subdomains (`acme.localhost`) for workspace routing
+- Multi-tenant workspaces with workspace subdomains, for workspace routing
 - Dynamic roles defined by admins with arbitrary permission strings
 - User invitations with roles assigned up front, accepted via token link
-- Workspace-scoped encrypted notes — titles and content encrypted in the browser via KMS envelope encryption (AES-GCM), the API stores ciphertext only
-- Next.js frontend with HttpOnly-cookie BFF auth (access token 15 min, refresh token 7 days)
+- Workspace-scoped encrypted notes, titles and content encrypted in the browser via KMS envelope encryption (AES-GCM), the API stores ciphertext only
+- Next.js frontend with HttpOnly-cookie BFF auth
 - Pluggable auth provider: Keycloak locally, AWS Cognito in production
 - Reusable fanout service: API publishes events to SNS → SQS → fanout → Socket.IO subscribers
-- API-authorized channel subscriptions — the fanout service asks the API whether a user may join a channel before allowing it
+- API-authorized channel subscriptions. The fanout service asks the API whether a user may join a channel before allowing it
 
 ## Technologies
 
 - **Frontend** — Next.js App Router, Tailwind CSS, TanStack Query, Socket.IO client
 - **API** — NestJS, Passport JWT, Swagger, Mongoose
 - **Fanout** — NestJS, Socket.IO, SQS long-polling
-- **Storage** — MongoDB, DynamoDB
+- **Storage** — MongoDB
 - **Messaging** — SNS, SQS
 - **Auth** — Keycloak, AWS Cognito
 - **Infrastructure** — AWS CDK v2, ECS Fargate, ALB, ECR, CloudWatch, Secrets Manager
@@ -60,7 +60,7 @@ docker compose up --build
 | Keycloak admin | http://localhost:8081 (admin / admin) |
 | LocalStack | http://localhost:4566 |
 
-LocalStack is initialised automatically — the KMS key (`alias/notes-local`), SNS topic, SQS queues, and DynamoDB table are all created on first start.
+LocalStack is initialised automatically — the KMS key (`alias/notes-local`), SNS topic, and SQS queues are all created on first start.
 
 ### 3. Open the app
 
@@ -104,7 +104,7 @@ aws secretsmanager create-secret --name notes/jwt-secret \
 
 Verify the `MAIL_FROM` sender or domain in Amazon SES in the target region before deploying. The API uses SES for production email and SNS for SMS OTP delivery through the ECS task role.
 
-The CDK stack creates the KMS key (`alias/notes`), Cognito user pool and Hosted UI domain, SNS/SQS/DynamoDB resources, and the three ECR repositories (`notes-api`, `notes-fanout`, `notes-frontend`) automatically on first deploy.
+The CDK stack creates the KMS key (`alias/notes`), Cognito user pool and Hosted UI domain, SNS/SQS resources, and the three ECR repositories (`notes-api`, `notes-fanout`, `notes-frontend`) automatically on first deploy.
 
 ### Required environment variables
 
@@ -142,7 +142,7 @@ To create the GitHub Actions OIDC deploy role, run:
 ### Deploy
 
 ```bash
-# Stateful resources — VPC, ECR, KMS, Cognito, SNS/SQS, DynamoDB
+# Stateful resources — VPC, ECR, KMS, Cognito, SNS/SQS
 npx cdk deploy NotesInfraStack \
   --require-approval never \
   --context corsOrigin=https://app.example.com \
@@ -164,7 +164,7 @@ npx cdk deploy NotesServicesStack \
 npx cdk destroy --all --context removalPolicy=destroy
 ```
 
-The `removalPolicy=destroy` context flag must be set to allow ECR, KMS, Cognito, and DynamoDB to be deleted with the stack.
+The `removalPolicy=destroy` context flag must be set to allow ECR, KMS, and Cognito to be deleted with the stack.
 
 ### CI/CD
 

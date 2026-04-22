@@ -2,7 +2,6 @@ import * as cdk from 'aws-cdk-lib';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as kms from 'aws-cdk-lib/aws-kms';
@@ -30,7 +29,6 @@ export class NotesInfraStack extends cdk.Stack {
     readonly userPoolDomain: cognito.UserPoolDomain;
     readonly eventsTopic: sns.Topic;
     readonly eventsQueue: sqs.Queue;
-    readonly connectionsTable: dynamodb.Table;
     readonly logGroups: Record<'api' | 'fanout' | 'frontend', logs.LogGroup>;
 
     constructor(scope: Construct, id: string, props: NotesInfraStackProps) {
@@ -117,19 +115,6 @@ export class NotesInfraStack extends cdk.Stack {
             deadLetterQueue: { queue: eventsDlq, maxReceiveCount: 5 }
         });
         this.eventsTopic.addSubscription(new subscriptions.SqsSubscription(this.eventsQueue));
-
-        // DynamoDB
-        this.connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
-            tableName: 'notes-connections',
-            partitionKey: { name: 'connectionId', type: dynamodb.AttributeType.STRING },
-            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            removalPolicy: removal
-        });
-
-        this.connectionsTable.addGlobalSecondaryIndex({
-            indexName: 'workspaceId-index',
-            partitionKey: { name: 'workspaceId', type: dynamodb.AttributeType.STRING }
-        });
 
         // CloudWatch Log Groups
         this.logGroups = {

@@ -44,7 +44,6 @@ export default registerAs('app', () => ({
         region: process.env.AWS_REGION || 'us-east-1',
         endpoint: process.env.AWS_ENDPOINT || (!isProduction ? localstackEndpoint : undefined),
         snsTopicArn: process.env.SNS_TOPIC_ARN || (!isProduction ? localstackTopicArn : undefined),
-        sqsQueueUrl: process.env.SQS_QUEUE_URL || (!isProduction ? localstackQueueUrl : undefined),
-        dynamodbTable: process.env.DYNAMODB_TABLE || 'notes-connections'
+        sqsQueueUrl: process.env.SQS_QUEUE_URL || (!isProduction ? localstackQueueUrl : undefined)
     }
 }));

@@ -23,13 +23,6 @@ awslocal sns set-subscription-attributes \
   --attribute-name RawMessageDelivery \
   --attribute-value false >/dev/null
 
-awslocal dynamodb create-table \
-  --table-name notes-connections \
-  --attribute-definitions AttributeName=connectionId,AttributeType=S AttributeName=workspaceId,AttributeType=S \
-  --key-schema AttributeName=connectionId,KeyType=HASH \
-  --global-secondary-indexes "IndexName=workspaceId-index,KeySchema=[{AttributeName=workspaceId,KeyType=HASH}],Projection={ProjectionType=ALL}" \
-  --billing-mode PAY_PER_REQUEST >/dev/null || true
-
 KEY_ID=$(awslocal kms create-key \
   --description "Local notes envelope encryption key" \
   --query KeyMetadata.KeyId \

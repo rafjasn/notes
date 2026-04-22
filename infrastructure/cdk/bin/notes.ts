@@ -59,7 +59,7 @@ const logoutUrls = csvOrDefault(
 
 const infra = new NotesInfraStack(app, 'NotesInfraStack', {
     env,
-    description: 'Notes — stateful resources (VPC, ECR, KMS, Cognito, SNS/SQS, DynamoDB)',
+    description: 'Notes — stateful resources (VPC, ECR, KMS, Cognito, SNS/SQS)',
     removalPolicy:
         app.node.tryGetContext('removalPolicy') === 'destroy'
             ? cdk.RemovalPolicy.DESTROY
