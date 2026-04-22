@@ -1,4 +1,5 @@
 # Notes
+[![CI](https://github.com/rafjasn/notes/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rafjasn/notes/actions/workflows/ci.yml)
 
 A full-stack multi-tenant encrypted notes platform built on AWS.
 
