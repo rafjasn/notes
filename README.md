@@ -5,14 +5,12 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 
 ## Features
 
-- Multi-tenant workspaces with workspace subdomains for tenant routing
-- Dynamic roles defined by admins with arbitrary permission strings
-- User invitations with roles assigned up front, accepted via token link
-- Workspace-scoped encrypted notes: titles and content are encrypted in the browser with AES-GCM, while KMS data-key operations run through authenticated BFF routes
-- Next.js frontend with HttpOnly-cookie BFF auth
-- Pluggable auth provider: Keycloak locally, AWS Cognito in production
-- Reusable fanout service: API publishes events to SNS → SQS → fanout → Socket.IO subscribers
-- API-authorized channel subscriptions. The fanout service asks the API whether a user may join a channel before allowing it
+- Multi-tenant encrypted notes/workspace app with workspace subdomains for tenant routing
+- Client-side AES-GCM encryption with per-note data keys, KMS-backed key wrapping, and workspace-scoped KMS encryption context
+- Secure auth with Cognito OAuth in production, Keycloak locally, BFF-managed HttpOnly token storage, SES email, and SNS SMS verification flows
+- Event-driven real-time synchronization: API publishes note events to SNS -> SQS -> fanout -> Socket.IO subscribers
+- Workspace collaboration with admin-defined roles, arbitrary permission strings, and invitation links with roles assigned up front
+- API-authorized channel subscriptions: the fanout service asks the API whether a user may join a channel before allowing it
 
 ## Technologies
 
