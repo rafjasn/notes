@@ -1,0 +1,17 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".",
+        "outDir": "dist-e2e",
+        "types": ["jest", "node"],
+        "paths": {
+            "@common/*": ["./src/common/*"],
+            "@config/*": ["./src/config/*"],
+            "@database/*": ["./src/database/*"],
+            "@modules/*": ["./src/modules/*"],
+            "@notes/shared": ["../../packages/shared/src"],
+            "@notes/fanout-client": ["../../packages/fanout-client/src"]
+        }
+    },
+    "include": ["src/**/*.ts", "test/**/*.ts"]
+}

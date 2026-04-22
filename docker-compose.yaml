@@ -1,0 +1,163 @@
+services:
+    nginx:
+        image: nginx:alpine
+        ports:
+            - '80:80'
+        volumes:
+            - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+        depends_on:
+            - api
+            - fanout-service
+            - frontend
+
+    mongo:
+        image: mongo:8.2
+        ports:
+            - '27017:27017'
+        volumes:
+            - mongo-data:/data/db
+        healthcheck:
+            test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    keycloak:
+        image: quay.io/keycloak/keycloak:26.1
+        ports:
+            - '8081:8080'
+        environment:
+            KEYCLOAK_ADMIN: admin
+            KEYCLOAK_ADMIN_PASSWORD: admin
+        volumes:
+            - ./infrastructure/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+        command: start-dev --import-realm
+
+    localstack:
+        image: localstack/localstack:4.14.0
+        ports:
+            - '4566:4566'
+        environment:
+            SERVICES: sns,sqs,dynamodb,kms
+            DEFAULT_REGION: us-east-1
+            DEBUG: 0
+        volumes:
+            - localstack-data:/var/lib/localstack
+            - ./infrastructure/localstack:/etc/localstack/init/ready.d:ro
+        healthcheck:
+            test: ['CMD', 'curl', '-f', 'http://localhost:4566/_localstack/health']
+            interval: 10s
+            timeout: 5s
+            retries: 10
+
+    api:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.api
+            target: development
+        ports:
+            - '3001:3000'
+        environment:
+            NODE_ENV: ${NODE_ENV:-development}
+            PORT: 3000
+            JWT_SECRET: ${JWT_SECRET:-change-me-in-development}
+            JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+            JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+            AUTH_PROVIDER: ${AUTH_PROVIDER:-keycloak}
+            KEYCLOAK_URL: http://keycloak:8080
+            KEYCLOAK_REALM: ${KEYCLOAK_REALM:-notes}
+            KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-notes-api}
+            KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-notes-admin}
+            KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-CHANGE_ME_IN_ENV}
+            COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-}
+            COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-}
+            MONGO_URI: mongodb://mongo:27017/notes
+            CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+            FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+            AWS_REGION: ${AWS_REGION:-us-east-1}
+            AWS_ENDPOINT: http://localstack:4566
+            AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+            AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+            SNS_TOPIC_ARN: ${SNS_TOPIC_ARN:-arn:aws:sns:us-east-1:000000000000:notes-events}
+            SQS_QUEUE_URL: ${SQS_QUEUE_URL:-http://localstack:4566/000000000000/notes-events-queue}
+            DYNAMODB_TABLE: ${DYNAMODB_TABLE:-notes-connections}
+            SMTP_HOST: mailhog
+            SMTP_PORT: ${SMTP_PORT:-1025}
+            MAIL_FROM: ${MAIL_FROM:-no-reply@notes.local}
+        volumes:
+            - ./services/api/src:/app/services/api/src
+            - ./services/api/tsconfig.json:/app/services/api/tsconfig.json:ro
+        depends_on:
+            mongo:
+                condition: service_healthy
+            localstack:
+                condition: service_healthy
+            mailhog:
+                condition: service_started
+            keycloak:
+                condition: service_started
+        command: npm run start:dev -w @notes/api
+
+    fanout-service:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.fanout-service
+            target: development
+        ports:
+            - '3002:3000'
+        environment:
+            PORT: 3000
+            CORS_ORIGIN: ${FANOUT_CORS_ORIGIN:-http://localhost}
+            API_BASE_URL: http://api:3000/api
+            JWT_SECRET: ${JWT_SECRET:-change-me-in-development}
+            AWS_REGION: ${AWS_REGION:-us-east-1}
+            AWS_ENDPOINT: http://localstack:4566
+            SQS_ENDPOINT: http://localstack:4566
+            AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+            AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+            SQS_QUEUE_URL: ${SQS_QUEUE_URL:-http://localstack:4566/000000000000/notes-events-queue}
+        volumes:
+            - ./services/fanout-service/src:/app/services/fanout-service/src
+            - ./packages/shared/src:/app/packages/shared/src
+        depends_on:
+            api:
+                condition: service_started
+            localstack:
+                condition: service_healthy
+        command: npm run start:dev -w @notes/fanout-service
+
+    frontend:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.frontend
+            target: development
+        volumes:
+            - ./frontend:/app/frontend
+            - /app/node_modules
+            - /app/frontend/.next
+        environment:
+            NODE_ENV: development
+            API_BASE_URL: http://api:3000/api
+            FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+            JWT_SECRET: ${JWT_SECRET:-change-me-in-development}
+            NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN:-localhost}
+            NEXT_PUBLIC_KMS_KEY_ID: ${NEXT_PUBLIC_KMS_KEY_ID:-alias/notes-local}
+            NEXT_PUBLIC_KMS_ENDPOINT: http://localstack:4566
+            NEXT_PUBLIC_AWS_REGION: us-east-1
+            AWS_REGION: us-east-1
+            AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+            AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+            AUTH_COOKIE_SECURE: "false"
+        depends_on:
+            api:
+                condition: service_started
+
+    mailhog:
+        image: mailhog/mailhog
+        ports:
+            - '1025:1025'
+            - '8025:8025'
+
+volumes:
+    mongo-data:
+    localstack-data:

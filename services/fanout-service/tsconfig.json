@@ -1,0 +1,13 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "rootDir": "src",
+        "composite": true,
+        "paths": {
+            "@notes/shared": ["../../packages/shared/src"]
+        }
+    },
+    "include": ["src/**/*"],
+    "references": [{ "path": "../../packages/shared" }]
+}

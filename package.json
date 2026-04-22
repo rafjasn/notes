@@ -1,0 +1,31 @@
+{
+    "name": "notes",
+    "version": "0.1.0",
+    "private": true,
+    "workspaces": [
+        "packages/*",
+        "services/*",
+        "frontend"
+    ],
+    "scripts": {
+        "dev": "docker compose up --build",
+        "dev:api": "npm run start:dev -w @notes/api",
+        "dev:fanout": "npm run start:dev -w @notes/fanout-service",
+        "dev:frontend": "npm run dev -w @notes/frontend",
+        "build": "npm run build --workspaces --if-present",
+        "build:shared": "npm run build -w @notes/shared",
+        "test:e2e": "npm run test:e2e -w @notes/api",
+        "lint": "npm run lint --workspaces --if-present",
+        "format": "prettier --write \"**/*.{ts,tsx,json}\"",
+        "format:check": "prettier --check \"**/*.{ts,tsx,json}\"",
+        "docker:up": "docker compose up -d",
+        "docker:down": "docker compose down -v",
+        "docker:logs": "docker compose logs -f",
+        "infra:synth": "npm --prefix infrastructure/cdk run synth",
+        "clean": "npm run clean --workspaces --if-present && rm -rf node_modules"
+    },
+    "devDependencies": {
+        "prettier": "^3.8.3",
+        "typescript": "^6.0.3"
+    }
+}
