@@ -1,6 +1,10 @@
 import { GenerateDataKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedSession, setSessionCookies } from '@/lib/server-api';
+import {
+    authorizeWorkspaceKms,
+    getAuthenticatedSession,
+    setSessionCookies
+} from '@/lib/server-api';
 
 function kmsClient() {
     return new KMSClient({
@@ -18,7 +22,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const { claims, newTokens } = session;
+    const { accessToken, claims, newTokens } = session;
 
     const keyId = process.env.NEXT_PUBLIC_KMS_KEY_ID;
 
@@ -29,11 +33,30 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as { workspaceId?: string };
     const workspaceId = body.workspaceId ?? claims.workspaceId;
 
+    if (!workspaceId) {
+        return NextResponse.json({ message: 'workspaceId is required' }, { status: 400 });
+    }
+
+    const authorization = await authorizeWorkspaceKms(accessToken, workspaceId, 'generate');
+
+    if (!authorization.ok) {
+        const response = NextResponse.json(
+            { message: 'Not authorized for workspace encryption' },
+            { status: authorization.status }
+        );
+
+        if (newTokens) {
+            setSessionCookies(response, newTokens);
+        }
+
+        return response;
+    }
+
     const { CiphertextBlob, Plaintext } = await kmsClient().send(
         new GenerateDataKeyCommand({
             KeyId: keyId,
             KeySpec: 'AES_256',
-            ...(workspaceId ? { EncryptionContext: { workspaceId } } : {})
+            EncryptionContext: { workspaceId }
         })
     );
 

@@ -90,8 +90,9 @@ export class AuthService {
     async register(dto: RegisterDto) {
         const email = normalizeEmail(dto.email);
         const providerId = await this.authProvider.register(email, dto.password, dto.name);
+        const user = await this.upsertUser({ providerId, email, name: dto.name });
 
-        await this.upsertUser({ providerId, email, name: dto.name });
+        this.assertUserActive(user);
         return this.issueTokens(providerId, email);
     }
 
@@ -118,9 +119,11 @@ export class AuthService {
 
         const user = await this.users.findByProviderId(payload.sub);
 
-        if (user?.status === 'disabled') {
-            throw new UnauthorizedException('Account disabled');
+        if (!user) {
+            throw new UnauthorizedException('User not found');
         }
+
+        this.assertUserActive(user);
 
         return this.issueTokens(payload.sub, payload.email, payload.workspaceId);
     }
@@ -144,13 +147,13 @@ export class AuthService {
         const normalized = normalizeEmail(email);
         const user = await this.users.findByEmail(normalized);
 
-        if (!user) {
+        if (!user || user.status === 'disabled') {
             return { challengeId: this.challenges.generateId() };
         }
 
         const code = sixDigitCode();
         const challengeId = this.challenges.generateId();
-        this.challenges.set<OtpChallenge>(
+        await this.challenges.set<OtpChallenge>(
             challengeId,
             { type: 'email-otp', identifier: normalized, code, workspaceSubdomain },
             10 * 60
@@ -162,7 +165,7 @@ export class AuthService {
     }
 
     async verifyEmailOtp(challengeId: string, code: string) {
-        const challenge = this.challenges.consume<OtpChallenge>(challengeId);
+        const challenge = await this.challenges.consume<OtpChallenge>(challengeId);
 
         if (!challenge || challenge.type !== 'email-otp') {
             throw new UnauthorizedException('Invalid or expired code');
@@ -178,6 +181,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid or expired code');
         }
 
+        this.assertUserActive(user);
         await this.users.touchLastLogin(user.providerId);
 
         return this.issueOrMfaChallenge(
@@ -194,6 +198,10 @@ export class AuthService {
         const user = await this.users.findByEmail(normalized);
 
         if (!user) {
+            return;
+        }
+
+        if (user.status === 'disabled') {
             return;
         }
 
@@ -232,6 +240,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid or expired link');
         }
 
+        this.assertUserActive(user);
         await this.users.touchLastLogin(user.providerId);
 
         return this.issueOrMfaChallenge(
@@ -250,13 +259,13 @@ export class AuthService {
         const normalized = normalizePhone(phone);
         const user = await this.users.findByPhone(normalized);
 
-        if (!user) {
+        if (!user || user.status === 'disabled') {
             return { challengeId: this.challenges.generateId() };
         }
 
         const code = sixDigitCode();
         const challengeId = this.challenges.generateId();
-        this.challenges.set<OtpChallenge>(
+        await this.challenges.set<OtpChallenge>(
             challengeId,
             { type: 'sms-otp', identifier: normalized, code, workspaceSubdomain },
             10 * 60
@@ -268,7 +277,7 @@ export class AuthService {
     }
 
     async verifySmsOtp(challengeId: string, code: string) {
-        const challenge = this.challenges.consume<OtpChallenge>(challengeId);
+        const challenge = await this.challenges.consume<OtpChallenge>(challengeId);
 
         if (!challenge || challenge.type !== 'sms-otp') {
             throw new UnauthorizedException('Invalid or expired code');
@@ -284,6 +293,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid or expired code');
         }
 
+        this.assertUserActive(user);
         return this.issueOrMfaChallenge(
             user.providerId,
             user.email,
@@ -295,7 +305,7 @@ export class AuthService {
 
     async getOAuthUrl(redirectUri: string): Promise<{ url: string; state: string }> {
         const state = this.challenges.generateId();
-        this.challenges.set(`oauth:${state}`, { redirectUri }, 10 * 60);
+        await this.challenges.set(`oauth:${state}`, { redirectUri }, 10 * 60);
 
         const url = await this.authProvider.getOAuthUrl(redirectUri, state);
 
@@ -303,7 +313,7 @@ export class AuthService {
     }
 
     async handleOAuthCallback(code: string, state: string, redirectUri: string) {
-        const stored = this.challenges.consume<{ redirectUri: string }>(`oauth:${state}`);
+        const stored = await this.challenges.consume<{ redirectUri: string }>(`oauth:${state}`);
 
         if (!stored) {
             throw new UnauthorizedException('Invalid or expired OAuth state');
@@ -348,7 +358,7 @@ export class AuthService {
     }
 
     async verifyMfaChallenge(challengeId: string, code: string) {
-        const challenge = this.challenges.consume<MfaChallenge>(challengeId);
+        const challenge = await this.challenges.consume<MfaChallenge>(challengeId);
 
         if (!challenge) {
             throw new UnauthorizedException('Invalid or expired MFA session');
@@ -358,6 +368,8 @@ export class AuthService {
         if (!doc?.mfaEnabled || !doc.mfaTotpSecret) {
             throw new UnauthorizedException('MFA not configured');
         }
+
+        this.assertUserActive(doc);
 
         if (!this.mfa.verify(doc.mfaTotpSecret, code)) {
             throw new UnauthorizedException('Invalid code');
@@ -373,8 +385,12 @@ export class AuthService {
             return;
         }
 
+        if (user.status === 'disabled') {
+            return;
+        }
+
         const token = this.challenges.generateId();
-        this.challenges.set(
+        await this.challenges.set(
             `pwreset:${token}`,
             { userId: user.providerId, email: user.email },
             15 * 60
@@ -389,7 +405,7 @@ export class AuthService {
     }
 
     async resetPassword(token: string, newPassword: string) {
-        const stored = this.challenges.consume<{ userId: string; email: string }>(
+        const stored = await this.challenges.consume<{ userId: string; email: string }>(
             `pwreset:${token}`
         );
 
@@ -401,9 +417,11 @@ export class AuthService {
             throw new UnauthorizedException('User not found');
         }
 
+        this.assertUserActive(user);
+
         if (user.mfaEnabled && user.mfaTotpSecret) {
             const challengeId = this.challenges.generateId();
-            this.challenges.set(
+            await this.challenges.set(
                 challengeId,
                 { userId: stored.userId, email: stored.email, newPassword },
                 5 * 60
@@ -418,7 +436,7 @@ export class AuthService {
     }
 
     async confirmResetPasswordMfa(challengeId: string, code: string) {
-        const challenge = this.challenges.consume<{
+        const challenge = await this.challenges.consume<{
             userId: string;
             email: string;
             newPassword: string;
@@ -433,6 +451,8 @@ export class AuthService {
         if (!user?.mfaEnabled || !user.mfaTotpSecret) {
             throw new UnauthorizedException('MFA not configured');
         }
+
+        this.assertUserActive(user);
 
         if (!this.mfa.verify(user.mfaTotpSecret, code)) {
             throw new UnauthorizedException('Invalid code');
@@ -474,6 +494,8 @@ export class AuthService {
             name
         });
 
+        this.assertUserActive(user);
+
         return this.issueOrMfaChallenge(
             payload.sub,
             email,
@@ -494,7 +516,11 @@ export class AuthService {
 
         if (mfaEnabled && mfaSecret) {
             const challengeId = this.challenges.generateId();
-            this.challenges.set<MfaChallenge>(challengeId, { userId, email, workspaceId }, 5 * 60);
+            await this.challenges.set<MfaChallenge>(
+                challengeId,
+                { userId, email, workspaceId },
+                5 * 60
+            );
             return { requiresMfa: true as const, challengeId };
         }
 
@@ -539,7 +565,21 @@ export class AuthService {
         return this.users.upsertFromProvider({ ...input, provider });
     }
 
+    private assertUserActive(user: { status?: 'active' | 'disabled' } | null | undefined) {
+        if (user?.status === 'disabled') {
+            throw new UnauthorizedException('Account disabled');
+        }
+    }
+
     private async issueTokens(userId: string, email: string, workspaceId?: string) {
+        const user = await this.users.findByProviderId(userId);
+
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+
+        this.assertUserActive(user);
+
         const accessExpiresIn = this.config.get<string>(
             'app.jwtExpiresIn',
             '15m'

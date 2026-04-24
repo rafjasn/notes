@@ -228,6 +228,42 @@ export class WorkspacesService {
         };
     }
 
+    async authorizeKms(
+        workspaceId: string,
+        user: JwtUser,
+        operation: 'generate' | 'decrypt'
+    ): Promise<{ allowed: true; workspaceId: string; operation: 'generate' | 'decrypt' }> {
+        const workspace = await this.workspaces.findById(workspaceId);
+
+        if (!workspace) {
+            throw new ForbiddenException('Workspace is not active');
+        }
+
+        const membership = await this.memberships.findActiveByWorkspaceAndUser(
+            workspaceId,
+            user.userId
+        );
+
+        if (!membership) {
+            throw new ForbiddenException('Not a member of this workspace');
+        }
+
+        const requiredPermission =
+            operation === 'generate' ? PERMISSIONS.notesWrite : PERMISSIONS.notesRead;
+        const roles = await this.roles.findByWorkspaceAndIds(workspaceId, membership.roleIds);
+        const hasPermission = roles.some(
+            (role) =>
+                role.permissions.includes(PERMISSIONS.all) ||
+                role.permissions.includes(requiredPermission)
+        );
+
+        if (!hasPermission) {
+            throw new ForbiddenException('Insufficient permissions for this KMS operation');
+        }
+
+        return { allowed: true, workspaceId, operation };
+    }
+
     async updateMyWorkspaceProfile(
         workspaceId: string,
         user: JwtUser,

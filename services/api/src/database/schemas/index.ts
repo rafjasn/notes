@@ -1,3 +1,4 @@
+export * from './auth-challenge.schema';
 export * from './workspace.schema';
 export * from './invitation.schema';
 export * from './membership.schema';

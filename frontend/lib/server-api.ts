@@ -260,7 +260,7 @@ export function logoutResponse() {
 
 export async function getAuthenticatedSession(
     request: NextRequest
-): Promise<{ claims: SessionClaims; newTokens: SessionTokens | null } | null> {
+): Promise<{ accessToken: string; claims: SessionClaims; newTokens: SessionTokens | null } | null> {
     const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
     const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
 
@@ -271,7 +271,7 @@ export async function getAuthenticatedSession(
     try {
         const claims = verifySessionToken(accessToken);
 
-        return { claims, newTokens: null };
+        return { accessToken, claims, newTokens: null };
     } catch {
         if (!refreshToken) {
             return null;
@@ -283,11 +283,26 @@ export async function getAuthenticatedSession(
         try {
             const claims = verifySessionToken(newTokens.accessToken);
 
-            return { claims, newTokens };
+            return { accessToken: newTokens.accessToken, claims, newTokens };
         } catch {
             return null;
         }
     }
+}
+
+export async function authorizeWorkspaceKms(
+    accessToken: string,
+    workspaceId: string,
+    operation: 'generate' | 'decrypt'
+): Promise<Response> {
+    return backendFetch(
+        `/workspaces/${encodeURIComponent(workspaceId)}/kms/authorize`,
+        {
+            method: 'POST',
+            body: JSON.stringify({ operation })
+        },
+        accessToken
+    );
 }
 
 export async function proxyAuthorizedJson(

@@ -1,3 +1,4 @@
+export * from './auth-challenges.repository';
 export * from './workspaces.repository';
 export * from './invitations.repository';
 export * from './memberships.repository';

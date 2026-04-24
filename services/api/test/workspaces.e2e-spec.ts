@@ -162,6 +162,58 @@ describe('Workspaces and invitations (e2e)', () => {
         });
     });
 
+    describe('KMS authorization', () => {
+        it('allows only members with the operation-specific note permission', async () => {
+            const workspace = await createWorkspace(app);
+
+            await request(app.getHttpServer())
+                .post(`/api/workspaces/${workspace.id}/kms/authorize`)
+                .set('Authorization', bearerToken(USERS.owner))
+                .send({ operation: 'generate' })
+                .expect(201);
+
+            await request(app.getHttpServer())
+                .post(`/api/workspaces/${workspace.id}/kms/authorize`)
+                .set('Authorization', bearerToken(USERS.outsider))
+                .send({ operation: 'decrypt' })
+                .expect(403);
+
+            const viewerRole = await request(app.getHttpServer())
+                .post(`/api/workspaces/${workspace.id}/roles`)
+                .set('Authorization', bearerToken(USERS.owner))
+                .send({
+                    name: 'KMS Viewer',
+                    permissions: ['notes:read']
+                })
+                .expect(201);
+
+            const invite = await request(app.getHttpServer())
+                .post(`/api/workspaces/${workspace.id}/invitations`)
+                .set('Authorization', bearerToken(USERS.owner))
+                .send({ email: USERS.member.email, roleIds: [viewerRole.body.id] })
+                .expect(201);
+
+            const token = extractInviteToken(invite.body.inviteUrl);
+            await request(app.getHttpServer())
+                .post(`/api/invitations/${token}/accept`)
+                .set('Authorization', bearerToken(USERS.member))
+                .send({ displayName: USERS.member.name })
+                .expect(201);
+
+            await request(app.getHttpServer())
+                .post(`/api/workspaces/${workspace.id}/kms/authorize`)
+                .set('Authorization', bearerToken(USERS.member))
+                .send({ operation: 'decrypt' })
+                .expect(201);
+
+            await request(app.getHttpServer())
+                .post(`/api/workspaces/${workspace.id}/kms/authorize`)
+                .set('Authorization', bearerToken(USERS.member))
+                .send({ operation: 'generate' })
+                .expect(403);
+        });
+    });
+
     describe('invitations', () => {
         it('sends, previews, and accepts an invitation for a matching email', async () => {
             const workspace = await createWorkspace(app);

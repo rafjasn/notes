@@ -108,3 +108,10 @@ export class AcceptInvitationDto {
     @MaxLength(100)
     displayName?: string;
 }
+
+export class AuthorizeKmsDto {
+    @ApiProperty({ enum: ['generate', 'decrypt'] })
+    @IsString()
+    @IsIn(['generate', 'decrypt'])
+    operation!: 'generate' | 'decrypt';
+}

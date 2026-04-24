@@ -6,6 +6,7 @@ import type { JwtUser } from '@modules/auth/auth.types';
 import { ParseMongoIdPipe } from '@common/pipes/parse-mongo-id.pipe';
 import { WorkspacesService } from './workspaces.service';
 import {
+    AuthorizeKmsDto,
     CreateWorkspaceDto,
     CreateRoleDto,
     InviteUserDto,
@@ -112,6 +113,17 @@ export class WorkspacesController {
         @Body() dto: UpdateMemberRolesDto
     ) {
         return this.workspaces.updateMemberRoles(workspaceId, userId, dto);
+    }
+
+    @Post(':workspaceId/kms/authorize')
+    @UseGuards(JwtAuthGuard)
+    @ApiOperation({ summary: 'Authorize a workspace-scoped KMS operation' })
+    authorizeKms(
+        @Param('workspaceId', ParseMongoIdPipe) workspaceId: string,
+        @CurrentUser() user: JwtUser,
+        @Body() dto: AuthorizeKmsDto
+    ) {
+        return this.workspaces.authorizeKms(workspaceId, user, dto.operation);
     }
 
     @Post(':workspaceId/invitations')
