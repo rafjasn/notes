@@ -4,7 +4,8 @@ import {
     clearDatabase,
     createE2eApp,
     createMockAuthProvider,
-    MockAuthProvider
+    MockAuthProvider,
+    MockMailService
 } from './helpers/app';
 import { bearerToken } from './helpers/jwt';
 
@@ -15,9 +16,10 @@ describe('Auth (e2e)', () => {
     let app: INestApplication;
     let connection: Connection;
     let mockAuthProvider: MockAuthProvider;
+    let mockMailService: MockMailService;
 
     beforeAll(async () => {
-        ({ app, connection, mockAuthProvider } = await createE2eApp());
+        ({ app, connection, mockAuthProvider, mockMailService } = await createE2eApp());
     });
 
     afterEach(async () => {
@@ -104,6 +106,39 @@ describe('Auth (e2e)', () => {
             );
         });
 
+        it('does not reactivate a disabled user during provider login', async () => {
+            const loginProvider = createMockAuthProvider({
+                sub: 'disabled-user-id',
+                email: 'disabled@example.com',
+                name: 'Disabled User'
+            });
+            mockAuthProvider.login.mockImplementation(loginProvider.login);
+
+            await connection.collection('users').insertOne({
+                providerId: 'disabled-user-id',
+                provider: 'keycloak',
+                email: 'disabled@example.com',
+                name: 'Disabled User',
+                status: 'disabled',
+                mfaEnabled: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            await request(app.getHttpServer())
+                .post('/api/auth/login')
+                .send({
+                    email: 'disabled@example.com',
+                    password: 'password123'
+                })
+                .expect(401);
+
+            const user = await connection
+                .collection('users')
+                .findOne({ providerId: 'disabled-user-id' });
+            expect(user?.status).toBe('disabled');
+        });
+
         it('returns 400 when required credentials are missing', async () => {
             await request(app.getHttpServer())
                 .post('/api/auth/login')
@@ -183,6 +218,68 @@ describe('Auth (e2e)', () => {
                 status: 'active',
                 mfaEnabled: false
             });
+        });
+
+        it('rejects protected routes and refreshes after an account is disabled', async () => {
+            const registered = await request(app.getHttpServer())
+                .post('/api/auth/register')
+                .send({
+                    email: 'disabled-after-login@example.com',
+                    password: 'password123',
+                    name: 'Disabled Later'
+                })
+                .expect(201);
+
+            await connection
+                .collection('users')
+                .updateOne({ providerId: 'test-user-id' }, { $set: { status: 'disabled' } });
+
+            await request(app.getHttpServer())
+                .get('/api/auth/me')
+                .set('Authorization', `Bearer ${registered.body.accessToken}`)
+                .expect(401);
+
+            await request(app.getHttpServer())
+                .post('/api/auth/refresh')
+                .send({ refreshToken: registered.body.refreshToken })
+                .expect(401);
+        });
+    });
+
+    describe('email OTP', () => {
+        it('stores the challenge durably and consumes it once', async () => {
+            await request(app.getHttpServer())
+                .post('/api/auth/register')
+                .send({
+                    email: 'otp@example.com',
+                    password: 'password123',
+                    name: 'Otp User'
+                })
+                .expect(201);
+
+            const initiated = await request(app.getHttpServer())
+                .post('/api/auth/otp/email')
+                .send({ email: 'otp@example.com' })
+                .expect(201);
+
+            const code = mockMailService.sendOtp.mock.calls[0]?.[1];
+            expect(code).toMatch(/^\d{6}$/);
+
+            const verified = await request(app.getHttpServer())
+                .post('/api/auth/otp/email/verify')
+                .send({ challengeId: initiated.body.challengeId, code })
+                .expect(201);
+
+            expect(verified.body).toMatchObject({
+                accessToken: expect.any(String),
+                refreshToken: expect.any(String),
+                email: 'otp@example.com'
+            });
+
+            await request(app.getHttpServer())
+                .post('/api/auth/otp/email/verify')
+                .send({ challengeId: initiated.body.challengeId, code })
+                .expect(401);
         });
     });
 });

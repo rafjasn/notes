@@ -219,7 +219,7 @@ export async function verifyJwt(token: string, options: VerifyJwtOptions): Promi
     assertIssuer(claims, options.issuer);
     assertAudience(claims, options.audience);
 
-    if (claims.type && claims.type !== 'access') {
+    if (options.provider === 'session' && claims.type !== 'access') {
         throw new Error('Access token required');
     }
 

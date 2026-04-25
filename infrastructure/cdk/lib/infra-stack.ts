@@ -4,6 +4,7 @@ import * as actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as elasticache from 'aws-cdk-lib/aws-elasticache';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
@@ -29,6 +30,9 @@ export class NotesInfraStack extends cdk.Stack {
     readonly userPoolDomain: cognito.UserPoolDomain;
     readonly eventsTopic: sns.Topic;
     readonly eventsQueue: sqs.Queue;
+    readonly realtimeCacheSecurityGroup: ec2.SecurityGroup;
+    readonly realtimeRedisEndpoint: string;
+    readonly realtimeRedisPort: string;
     readonly logGroups: Record<'api' | 'fanout' | 'frontend', logs.LogGroup>;
 
     constructor(scope: Construct, id: string, props: NotesInfraStackProps) {
@@ -45,6 +49,44 @@ export class NotesInfraStack extends cdk.Stack {
                 { name: 'Private', subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 }
             ]
         });
+
+        this.realtimeCacheSecurityGroup = new ec2.SecurityGroup(this, 'RealtimeRedisSg', {
+            vpc: this.vpc,
+            allowAllOutbound: true,
+            description: 'Controls access to the Notes realtime Redis adapter cache'
+        });
+        this.realtimeCacheSecurityGroup.applyRemovalPolicy(removal);
+
+        const realtimeRedisSubnetGroup = new elasticache.CfnSubnetGroup(
+            this,
+            'RealtimeRedisSubnetGroup',
+            {
+                description: 'Private subnets for the Notes realtime Redis adapter cache',
+                subnetIds: this.vpc.selectSubnets({
+                    subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS
+                }).subnetIds
+            }
+        );
+        realtimeRedisSubnetGroup.applyRemovalPolicy(removal);
+
+        const realtimeRedis = new elasticache.CfnReplicationGroup(this, 'RealtimeRedis', {
+            replicationGroupDescription: 'Redis pub/sub for Socket.IO realtime fanout',
+            engine: 'redis',
+            engineVersion: '7.1',
+            cacheNodeType: 'cache.t4g.micro',
+            numCacheClusters: 2,
+            automaticFailoverEnabled: true,
+            multiAzEnabled: true,
+            atRestEncryptionEnabled: true,
+            transitEncryptionEnabled: true,
+            port: 6379,
+            cacheSubnetGroupName: realtimeRedisSubnetGroup.ref,
+            securityGroupIds: [this.realtimeCacheSecurityGroup.securityGroupId]
+        });
+        realtimeRedis.applyRemovalPolicy(removal);
+
+        this.realtimeRedisEndpoint = realtimeRedis.attrPrimaryEndPointAddress;
+        this.realtimeRedisPort = realtimeRedis.attrPrimaryEndPointPort;
 
         // ECR Repositories
         const serviceNames = ['api', 'fanout', 'frontend'] as const;
@@ -180,6 +222,9 @@ export class NotesInfraStack extends cdk.Stack {
         });
         new cdk.CfnOutput(this, 'CognitoHostedUiDomain', {
             value: `https://${this.userPoolDomain.domainName}`
+        });
+        new cdk.CfnOutput(this, 'RealtimeRedisEndpoint', {
+            value: this.realtimeRedisEndpoint
         });
 
         for (const [svc, repo] of Object.entries(this.repositories)) {

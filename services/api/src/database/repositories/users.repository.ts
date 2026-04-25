@@ -39,12 +39,16 @@ export class UsersRepository {
                 $or: [{ providerId: input.providerId }, { email: input.email }]
             },
             {
-                providerId: input.providerId,
-                provider: input.provider,
-                email: input.email,
-                name: input.name || input.email,
-                status: 'active',
-                lastLoginAt: new Date()
+                $set: {
+                    providerId: input.providerId,
+                    provider: input.provider,
+                    email: input.email,
+                    name: input.name || input.email,
+                    lastLoginAt: new Date()
+                },
+                $setOnInsert: {
+                    status: 'active'
+                }
             },
             { upsert: true, new: true }
         );

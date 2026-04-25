@@ -3,6 +3,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import {
     Workspace,
     WorkspaceSchema,
+    AuthChallenge,
+    AuthChallengeSchema,
     Invitation,
     InvitationSchema,
     Membership,
@@ -18,6 +20,7 @@ import {
 } from './schemas';
 import {
     WorkspacesRepository,
+    AuthChallengesRepository,
     InvitationsRepository,
     MembershipsRepository,
     NoteVersionsRepository,
@@ -28,6 +31,7 @@ import {
 
 const repositories = [
     WorkspacesRepository,
+    AuthChallengesRepository,
     InvitationsRepository,
     MembershipsRepository,
     NoteVersionsRepository,
@@ -40,6 +44,7 @@ const repositories = [
     imports: [
         MongooseModule.forFeature([
             { name: Workspace.name, schema: WorkspaceSchema },
+            { name: AuthChallenge.name, schema: AuthChallengeSchema },
             { name: Invitation.name, schema: InvitationSchema },
             { name: Membership.name, schema: MembershipSchema },
             { name: Note.name, schema: NoteSchema },

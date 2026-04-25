@@ -22,6 +22,16 @@ services:
             timeout: 5s
             retries: 5
 
+    redis:
+        image: redis:8
+        ports:
+            - '6379:6379'
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
     keycloak:
         image: quay.io/keycloak/keycloak:26.1
         ports:
@@ -115,6 +125,7 @@ services:
             AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
             AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
             SQS_QUEUE_URL: ${SQS_QUEUE_URL:-http://localstack:4566/000000000000/notes-events-queue}
+            REDIS_URL: ${REDIS_URL:-redis://redis:6379}
         volumes:
             - ./services/fanout-service/src:/app/services/fanout-service/src
             - ./packages/shared/src:/app/packages/shared/src
@@ -122,6 +133,8 @@ services:
             api:
                 condition: service_started
             localstack:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
         command: npm run start:dev -w @notes/fanout-service
 
@@ -146,7 +159,7 @@ services:
             AWS_REGION: us-east-1
             AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
             AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
-            AUTH_COOKIE_SECURE: "false"
+            AUTH_COOKIE_SECURE: 'false'
         depends_on:
             api:
                 condition: service_started
