@@ -29,6 +29,9 @@ export default registerAs('fanout', () => ({
     auth: {
         jwtSecret: process.env.JWT_SECRET || 'change-me-in-development'
     },
+    redis: {
+        url: process.env.REDIS_URL
+    },
     aws: {
         region: process.env.AWS_REGION || 'us-east-1',
         endpoint:

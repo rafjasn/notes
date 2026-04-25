@@ -8,7 +8,7 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 - Multi-tenant encrypted notes/workspace app with workspace subdomains for tenant routing
 - Client-side AES-GCM encryption with per-note data keys, KMS-backed key wrapping, and workspace-scoped KMS encryption context
 - Secure auth with Cognito OAuth in production, Keycloak locally, BFF-managed HttpOnly token storage, SES email, and SNS SMS verification flows
-- Event-driven real-time synchronization: API publishes note events to SNS -> SQS -> fanout -> Socket.IO subscribers
+- Event-driven real-time synchronization: API publishes note events to SNS -> SQS -> fanout, and Redis-backed Socket.IO clustering broadcasts across fanout tasks
 - Workspace collaboration with admin-defined roles, arbitrary permission strings, and invitation links with roles assigned up front
 - API-authorized channel subscriptions: the fanout service asks the API whether a user may join a channel before allowing it
 
@@ -16,9 +16,9 @@ A full-stack multi-tenant encrypted notes platform built on AWS.
 
 - **Frontend** — Next.js App Router, Tailwind CSS, TanStack Query, Socket.IO client
 - **API** — NestJS, Passport JWT, Swagger, Mongoose
-- **Fanout** — NestJS, Socket.IO, SQS long-polling
+- **Fanout** — NestJS, Socket.IO, SQS long-polling, Redis pub/sub adapter
 - **Storage** — MongoDB
-- **Messaging** — SNS, SQS
+- **Messaging** — SNS, SQS, Redis pub/sub
 - **Auth** — Keycloak, AWS Cognito
 - **Infrastructure** — AWS CDK v2, ECS Fargate, ALB, ECR, KMS, Cognito, SES, CloudWatch, Secrets Manager
 - **Local dev** — LocalStack, Docker Compose, Mailhog
@@ -56,8 +56,9 @@ docker compose up --build
 | Mailhog | http://localhost:8025 |
 | Keycloak admin | http://localhost:8081 (admin / admin) |
 | LocalStack | http://localhost:4566 |
+| Redis | localhost:6379 |
 
-LocalStack is initialised automatically — the KMS key (`alias/notes-local`), SNS topic, and SQS queues are all created on first start.
+LocalStack is initialised automatically — the KMS key (`alias/notes-local`), SNS topic, and SQS queues are all created on first start. Redis is used by the fanout service so Socket.IO broadcasts reach clients connected to any fanout instance.
 
 ### 3. Open the app
 
@@ -102,7 +103,7 @@ aws secretsmanager create-secret --name notes/jwt-secret \
 
 Verify the `MAIL_FROM` sender or domain in Amazon SES in the target region before deploying. The API uses SES for production email and SNS for SMS OTP delivery through the ECS task role.
 
-The CDK stack creates the KMS key (`alias/notes`), Cognito user pool and Hosted UI domain, SNS/SQS resources, and the three ECR repositories (`notes-api`, `notes-fanout`, `notes-frontend`) automatically on first deploy.
+The CDK stack creates the KMS key (`alias/notes`), Cognito user pool and Hosted UI domain, SNS/SQS resources, ElastiCache Redis for realtime fanout, and the three ECR repositories (`notes-api`, `notes-fanout`, `notes-frontend`) automatically on first deploy.
 
 ### Required environment variables
 

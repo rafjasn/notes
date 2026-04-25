@@ -106,6 +106,11 @@ export class NotesServicesStack extends cdk.Stack {
             cpu: 256,
             memoryLimitMiB: 512
         });
+        const fanoutSecurityGroup = new ec2.SecurityGroup(this, 'FanoutSecurityGroup', {
+            vpc: infra.vpc,
+            allowAllOutbound: true,
+            description: 'Controls network access for Notes fanout tasks'
+        });
 
         fanoutTask.addContainer('FanoutContainer', {
             image: ecs.ContainerImage.fromEcrRepository(infra.repositories.fanout, imageTag),
@@ -115,7 +120,8 @@ export class NotesServicesStack extends cdk.Stack {
                 CORS_ORIGIN: corsOrigin,
                 API_BASE_URL: `http://${albDns}/api`,
                 AWS_REGION: this.region,
-                SQS_QUEUE_URL: infra.eventsQueue.queueUrl
+                SQS_QUEUE_URL: infra.eventsQueue.queueUrl,
+                REDIS_URL: `rediss://${infra.realtimeRedisEndpoint}:${infra.realtimeRedisPort}`
             },
             secrets: {
                 JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret)
@@ -142,7 +148,17 @@ export class NotesServicesStack extends cdk.Stack {
             desiredCount: 2,
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
+            securityGroups: [fanoutSecurityGroup],
             vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }
+        });
+
+        new ec2.CfnSecurityGroupIngress(this, 'FanoutToRealtimeRedisIngress', {
+            groupId: infra.realtimeCacheSecurityGroup.securityGroupId,
+            sourceSecurityGroupId: fanoutSecurityGroup.securityGroupId,
+            ipProtocol: 'tcp',
+            fromPort: 6379,
+            toPort: 6379,
+            description: 'Allow fanout tasks to use Redis pub/sub'
         });
 
         const fanoutTg = new elbv2.ApplicationTargetGroup(this, 'FanoutTg', {
